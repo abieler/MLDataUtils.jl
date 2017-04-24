@@ -227,6 +227,7 @@ function rescale!(D::AbstractDataFrame, colnames::Vector{Symbol})
 end
 
 function rescale!(D::AbstractDataFrame, colnames::Vector{Symbol}, μ::AbstractVector, σ::AbstractVector)
+    σ[σ .== 0] = 1
     for (icol, colname) in enumerate(colnames)
         if eltype(D[colname]) <: Real
             rescale!(D, colname, μ[icol], σ[icol])
@@ -247,7 +248,6 @@ function rescale!(D::AbstractDataFrame, colname::Symbol, μ, σ)
     D[colname] = newcol
     μ, σ
 end
-
 
 immutable FeatureNormalizer
     offset::Vector{Float64}
