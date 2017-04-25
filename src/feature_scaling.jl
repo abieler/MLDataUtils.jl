@@ -69,34 +69,61 @@ function center!(X::AbstractMatrix, μ::AbstractVector, ::ObsDim.Constant{2})
 end
 
 function center!(D::AbstractDataFrame)
+    T = typeof(0.0)
+    μ_vec = T[]
+
     flt = Bool[T <: Real for T in eltypes(D)]
     for colname in names(D)[flt]
         μ = mean(D[colname])
-        D[colname] = D[colname] .- μ
+        center!(D, colname, μ)
+        push!(μ_vec, μ)
     end
-end
-
-function center!{T<:Real}(D::AbstractDataFrame, μ::AbstractVector{T})
-    nobs = size(D, 1)
-    for (icol, colname) in enumerate(names(D))
-        D[colname] = D[colname] .- μ[icol]
-    end
+    μ_vec
 end
 
 function center!(D::AbstractDataFrame, colnames::AbstractVector{Symbol})
-    nobs = size(D, 1)
+    T = typeof(0.0)
+    μ_vec = T[]
     for colname in colnames
-        μ = mean(D[colname])
-        D[colname] = D[colname] .- μ
+        if eltype(D[colname]) <: Real
+            μ = mean(D[colname])
+            if isna(μ)
+                warn("Column $colname contains NA values, skipping rescaling of this column!")
+                continue
+            end
+            center!(D, colname, μ)
+            push!(μ_vec, μ)
+        else
+            warn("Skipping $colname, centering only valid for columns of type T <: Real.")
+        end
     end
+    μ_vec
 end
 
-function center!{T<:Real}(D::AbstractDataFrame, μ::AbstractVector{T}, colnames::AbstractVector{Symbol})
-    @assert length(colnames) == length(μ)
-    nobs = size(D, 1)
+function center!(D::AbstractDataFrame, colnames::AbstractVector{Symbol}, μ::AbstractVector)
     for (icol, colname) in enumerate(colnames)
-        D[colname] = D[colname] .- μ[icol]
+        if eltype(D[colname]) <: Real
+            center!(D, colname, μ[icol])
+        else
+            warn("Skipping $colname, centering only valid for columns of type T <: Real.")
+        end
     end
+    μ
+end
+
+function center!(D::AbstractDataFrame, colname::Symbol, μ)
+    if sum(isna(D[colname])) > 0 
+        warn("Column $colname contains NA values, skipping centering on this column!")
+    else
+        T = typeof(0.0)
+        newcol::Vector{T} = convert(Vector{T}, D[colname])
+        nobs = length(newcol)
+        @inbounds for i in eachindex(newcol)
+            newcol[i] -= μ
+        end
+        D[colname] = newcol
+    end
+    μ
 end
 
 """
@@ -131,7 +158,7 @@ end
 function rescale!(X::AbstractVector, ::ObsDim.Constant{1})
     μ = mean(X)
     σ = std(X)
-    for i in 1:length(X)
+    @inbounds for i in 1:length(X)
         X[i] = (X[i] - μ) / σ
     end
     μ, σ
@@ -169,6 +196,71 @@ end
 function rescale!(X::AbstractVector, μ::AbstractFloat, σ::AbstractFloat, ::ObsDim.Constant{1})
     @inbounds for i in 1:length(X)
         X[i] = (X[i] - μ) / σ
+    end
+    μ, σ
+end
+
+function rescale!(D::AbstractDataFrame)
+    T = typeof(0.0)
+    μ_vec = T[]
+    σ_vec = T[]
+
+    flt = Bool[T <: Real for T in eltypes(D)]
+    for colname in names(D)[flt]
+        μ = mean(D[colname])
+        σ = std(D[colname])
+        rescale!(D, colname, μ, σ)
+        push!(μ_vec, μ)
+        push!(σ_vec, σ)
+    end
+    μ_vec, σ_vec
+end
+
+function rescale!(D::AbstractDataFrame, colnames::Vector{Symbol})
+    T = typeof(0.0)
+    μ_vec = T[]
+    σ_vec = T[]
+    for colname in colnames 
+        if eltype(D[colname]) <: Real
+            μ = mean(D[colname])
+            σ = std(D[colname])
+            if isna(μ)
+                warn("Column $colname contains NA values, skipping rescaling of this column!")
+                continue
+            end
+            rescale!(D, colname, μ, σ)
+            push!(μ_vec, μ)
+            push!(σ_vec, σ)
+        else
+            warn("Skipping $colname, rescaling only valid for columns of type T <: Real.")
+        end
+    end
+    μ_vec, σ_vec
+end
+
+function rescale!(D::AbstractDataFrame, colnames::Vector{Symbol}, μ::AbstractVector, σ::AbstractVector)
+    σ[σ .== 0] = 1
+    for (icol, colname) in enumerate(colnames)
+        if eltype(D[colname]) <: Real
+            rescale!(D, colname, μ[icol], σ[icol])
+        else
+            warn("Skipping $colname, rescaling only valid for columns of type T <: Real.")
+        end
+    end
+    μ, σ
+end
+
+function rescale!(D::AbstractDataFrame, colname::Symbol, μ, σ)
+    if sum(isna(D[colname])) > 0 
+        warn("Column $colname contains NA values, skipping rescaling of this column!")
+    else
+        T = typeof(0.0)
+        newcol::Vector{T} = convert(Vector{T}, D[colname])
+        nobs = length(newcol)
+        @inbounds for i in eachindex(newcol)
+            newcol[i] = (newcol[i] - μ) / σ
+        end
+        D[colname] = newcol
     end
     μ, σ
 end
